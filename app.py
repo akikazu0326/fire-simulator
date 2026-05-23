@@ -215,34 +215,47 @@ with tab_basic:
         if res["sp_ratio"] is not None:
             st.caption(f"ポートフォリオ：S&P500 {res['sp_ratio']}% / NASDAQ100 {res['nq_ratio']}%")
 
-        # グラフ（100歳上限）
+        # グラフ（100歳上限 / Y軸=FIRE達成資産×10）
         arr  = res["assets_arr"]
         ages = list(range(base_age, base_age + len(arr)))
-        # 100歳でクリップ
-        clip = [(a, v) for a, v in zip(ages, arr) if a <= 100]
+
+        # Y軸上限：FIRE達成資産の10倍（未達成時は現資産の10倍）
+        fire_target = res["fire_target"]
+        y_max = fire_target * 10
+
+        # 100歳 かつ Y軸上限 でクリップ（先に達した方で打ち切り）
+        clip = []
+        for a, v in zip(ages, arr):
+            if a > 100:
+                break
+            if v >= y_max:
+                clip.append((a, y_max))  # 上限到達点を追加してそこで終了
+                break
+            clip.append((a, v))
+
         if clip:
             ages_c, arr_c = zip(*clip)
         else:
             ages_c, arr_c = ages, arr
 
+        x_max = ages_c[-1]  # 実際に描画する最終年齢
+
         fig = go.Figure()
         fig.add_trace(go.Scatter(
             x=list(ages_c), y=list(arr_c), mode="lines",
             line=dict(color=C["complete"], width=2.5),
-            fill="toself" if False else None,
             name="資産推移",
             hovertemplate="年齢 %{x}歳<br>資産 %{y:,}万円<extra></extra>",
         ))
-        if res["fire_age"] and res["fire_age"] <= 100:
+        if res["fire_age"] and res["fire_age"] <= x_max:
             fig.add_vline(x=res["fire_age"], line_dash="dash",
                           line_color=C["blue"], annotation_text=f"FIRE {res['fire_age']}歳")
-        fig.add_hline(y=res["fire_target"], line_dash="dot",
+        fig.add_hline(y=fire_target, line_dash="dot",
                       line_color=C["baseline"], annotation_text="必要資産")
-        y_max = assets * 10  # 初期資産の10倍を上限に
         fig.update_layout(
             title="資産推移シミュレーション（〜100歳）",
             xaxis_title="年齢（歳）", yaxis_title="資産（万円）",
-            xaxis=dict(range=[base_age, 100]),
+            xaxis=dict(range=[base_age, x_max]),
             yaxis=dict(range=[0, y_max]),
             template="plotly_dark", height=400,
             paper_bgcolor="#1a2635", plot_bgcolor="#1a2635",
