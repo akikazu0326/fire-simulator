@@ -137,12 +137,13 @@ def simulate_window(seq, wr, labor_ratio, stock_w, bond_w, thr_mult):
     }
 
 # ── ローリングウィンドウ ────────────────────────────────────
-def run_rolling(wr, labor_ratio, stock_w, bond_w, thr_mult=10) -> list:
+def run_rolling(wr, labor_ratio, stock_w, bond_w, thr_mult=10, sim_years=None) -> list:
+    yrs  = sim_years if sim_years is not None else SIM_YEARS
     df   = MARKET_DF
     n    = len(df)
     results = []
-    for start in range(n - SIM_YEARS + 1):
-        seg = df.iloc[start:start + SIM_YEARS]
+    for start in range(n - yrs + 1):
+        seg = df.iloc[start:start + yrs]
         seq = list(zip(seg["sp500"], seg["bond"], seg["cpi_inf"]))
         r   = simulate_window(seq, wr, labor_ratio, stock_w, bond_w, thr_mult)
         r["start_year"] = int(df.iloc[start]["year"])
@@ -151,7 +152,8 @@ def run_rolling(wr, labor_ratio, stock_w, bond_w, thr_mult=10) -> list:
 
 # ── モンテカルロ（t分布 fat-tail） ──────────────────────────
 def run_monte_carlo(scenario, wr, labor_ratio, stock_w, bond_w,
-                    thr_mult=10, n_sim=500, seed=RANDOM_SEED) -> list:
+                    thr_mult=10, n_sim=500, seed=RANDOM_SEED, sim_years=None) -> list:
+    yrs = sim_years if sim_years is not None else SIM_YEARS
     rng = np.random.default_rng(seed)
     p   = MC_PARAMS[scenario]
 
@@ -163,9 +165,9 @@ def run_monte_carlo(scenario, wr, labor_ratio, stock_w, bond_w,
 
     results = []
     for _ in range(n_sim):
-        eq  = t_sample(p["eq_mu"],  p["eq_sd"],  SIM_YEARS)
-        bd  = np.full(SIM_YEARS, p["bd_mu"]) + rng.standard_normal(SIM_YEARS) * 0.01
-        inf = np.clip(t_sample(p["inf_mu"], p["inf_sd"], SIM_YEARS), -0.05, None)
+        eq  = t_sample(p["eq_mu"],  p["eq_sd"],  yrs)
+        bd  = np.full(yrs, p["bd_mu"]) + rng.standard_normal(yrs) * 0.01
+        inf = np.clip(t_sample(p["inf_mu"], p["inf_sd"], yrs), -0.05, None)
         seq = list(zip(eq, bd, inf))
         results.append(simulate_window(seq, wr, labor_ratio, stock_w, bond_w, thr_mult))
     return results
@@ -270,6 +272,7 @@ def basic_fire_calc(
     inflation_mode, manual_inflation,
     invest_mode, manual_invest,
     edu_manual=None,
+    manual_wr=None,
 ) -> dict:
     """GAS版のcalculate()をPythonに完全移植"""
 
@@ -296,8 +299,11 @@ def basic_fire_calc(
     # インフレ
     inflation = manual_inflation if inflation_mode == "manual" else 0.02
 
-    # 取り崩し率（論文準拠：can_workでも閾値モデル使用、ここでは初期設定値）
-    wr = 0.06 if can_work else 0.04
+    # 取り崩し率（手動優先）
+    if manual_wr is not None:
+        wr = manual_wr
+    else:
+        wr = 0.06 if can_work else 0.04
 
     # 教育費PV
     edu_pv = 0.0
